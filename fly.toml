@@ -1,0 +1,12 @@
+app = 'benbot-discord'
+primary_region = 'iad'
+
+[build]
+
+[processes]
+  bot = 'node index.js'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = 256
+  processes = ['bot']
