@@ -1,17 +1,23 @@
-app = 'benbot-discord'
-primary_region = 'iad'
+# fly.toml app configuration file generated for benbot on 2026-02-22T02:26:16Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'benbot'
+primary_region = 'ams'
 
 [build]
 
-[processes]
-  bot = 'node index.js'
-
-[mounts]
-  source = 'benbot_data'
-  destination = '/data'
-  processes = ['bot']
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
-  size = 'shared-cpu-1x'
-  memory = 256
-  processes = ['bot']
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256
