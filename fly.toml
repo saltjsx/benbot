@@ -6,6 +6,11 @@ primary_region = 'iad'
 [processes]
   bot = 'node index.js'
 
+[mounts]
+  source = 'benbot_data'
+  destination = '/data'
+  processes = ['bot']
+
 [[vm]]
   size = 'shared-cpu-1x'
   memory = 256

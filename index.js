@@ -9,6 +9,8 @@ const {
   PermissionFlagsBits,
 } = require("discord.js");
 const OpenAI = require("openai");
+const fs = require("fs");
+const path = require("path");
 
 // --- Logging helper ---
 function log(tag, ...args) {
@@ -16,9 +18,39 @@ function log(tag, ...args) {
   console.log(`[${ts}] [${tag}]`, ...args);
 }
 
-// --- Config (persisted in memory, lost on restart) ---
+// --- Persistent config ---
+const CONFIG_DIR = process.env.DATA_DIR || "/data";
+const CONFIG_PATH = path.join(CONFIG_DIR, "guildConfig.json");
+
 // guildId -> { activeChannel, memoryChannel }
 const guildConfig = new Map();
+
+function loadConfig() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      const data = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+      for (const [guildId, cfg] of Object.entries(data)) {
+        guildConfig.set(guildId, cfg);
+      }
+      log("CONFIG", `Loaded config for ${guildConfig.size} guild(s) from ${CONFIG_PATH}`);
+    } else {
+      log("CONFIG", "No saved config found, starting fresh");
+    }
+  } catch (err) {
+    log("ERROR", `Failed to load config from ${CONFIG_PATH}:`, err.message);
+  }
+}
+
+function saveConfig() {
+  try {
+    const data = Object.fromEntries(guildConfig);
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(data, null, 2));
+    log("CONFIG", `Saved config for ${guildConfig.size} guild(s) to ${CONFIG_PATH}`);
+  } catch (err) {
+    log("ERROR", `Failed to save config to ${CONFIG_PATH}:`, err.message);
+  }
+}
 
 // --- OpenCode Zen client (OpenAI-compatible) ---
 const ai = new OpenAI({
@@ -136,7 +168,10 @@ async function saveMemory(guild, text) {
 
 /** Build the system prompt including memories. */
 function buildSystemPrompt(memories) {
-  let sys = `You are BenBot, a chill and helpful Discord bot. You talk naturally, like a real person in a Discord server — not overly formal, not robotic. Keep responses concise unless asked for detail. You can use markdown formatting that Discord supports.
+  const botName = process.env.BOT_NAME || "BenBot";
+  const personality = process.env.BOT_PERSONALITY || "a chill and helpful Discord bot. You talk naturally, like a real person in a Discord server — not overly formal, not robotic. Keep responses concise unless asked for detail.";
+
+  let sys = `You are ${botName}, ${personality} You can use markdown formatting that Discord supports.
 
 You have a memory channel where important information is stored. Here are your current memories:
 `;
@@ -148,9 +183,19 @@ You have a memory channel where important information is stored. Here are your c
     sys += "\n(No memories stored yet.)\n";
   }
 
-  sys += `\nIf you learn something important during conversation that you'd want to remember later (like a user's preference, a fact about the server, etc.), include it at the END of your response on its own line in this exact format:
+  sys += `\nYou should actively remember things from conversations. Whenever you pick up on ANY of the following, save it as a memory:
+- Someone's name, nickname, or what they like to be called
+- Opinions, preferences, or interests (games, music, food, hobbies, etc.)
+- Facts about people (age, job, school, timezone, location, pets, etc.)
+- Inside jokes, recurring topics, or funny moments
+- Relationships between people in the server
+- Server-specific context (what the server is about, ongoing projects, events)
+- Anything someone explicitly asks you to remember
+
+Include memories at the END of your response in this exact format (you can include multiple):
 [MEMORY] the thing you want to remember [/MEMORY]
-Only do this when there's genuinely useful info worth saving. Don't force it.`;
+
+Be generous with saving memories — it's better to remember too much than too little. These memories help you be a better friend to everyone in the server.`;
 
   return sys;
 }
@@ -259,6 +304,7 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.commandName === "setchannel") {
       const channel = interaction.options.getChannel("channel");
       cfg.activeChannel = channel.id;
+      saveConfig();
       log("CMD", `Active channel set to #${channel.name} (${channel.id}) in ${interaction.guild.name}`);
       await interaction.reply(`Active channel set to <#${channel.id}>`);
     }
@@ -266,6 +312,7 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.commandName === "setmemory") {
       const channel = interaction.options.getChannel("channel");
       cfg.memoryChannel = channel.id;
+      saveConfig();
       log("CMD", `Memory channel set to #${channel.name} (${channel.id}) in ${interaction.guild.name}`);
       await interaction.reply(`Memory channel set to <#${channel.id}>`);
     }
@@ -393,4 +440,5 @@ log("INIT", `Discord token: ${process.env.DISCORD_TOKEN ? "set (" + process.env.
 log("INIT", `Client ID: ${process.env.DISCORD_CLIENT_ID || "MISSING"}`);
 log("INIT", `OpenCode Zen key: ${process.env.OPENCODE_ZEN_API_KEY ? "set (" + process.env.OPENCODE_ZEN_API_KEY.substring(0, 8) + "...)" : "MISSING"}`);
 
+loadConfig();
 client.login(process.env.DISCORD_TOKEN);
